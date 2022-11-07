@@ -1,3 +1,4 @@
+#pragma optimize("", off)
 // Monster movement code; essentially, the AI
 
 #include "monster.h" // IWYU pragma: associated
@@ -581,16 +582,15 @@ void monster::plan()
     } else if( friendly > 0 && one_in( 3 ) ) {
         // Grow restless with no targets
         friendly--;
-    } else if( friendly < 0 && sees( g->u ) && !has_flag( MF_PET_WONT_FOLLOW ) ) {
-        if( rl_dist( pos(), g->u.pos() ) > 2 ) {
-            set_dest( g->u.pos() );
-        } else {
-            unset_dest();
-        }
+    } else if( friendly < 0 && sees( g->u ) ) {
+        // if friendly monster sees the player, and don't have a target, then he is the target
+        // so will make pets with MF_PET_WONT_FOLLOW stop freaking out because they smelled a friendly npc/the player, and didn't "see" him because he's not the target
+        // this will also make pets without the MF_PET_WONT_FOLLOW flag simply follow the player
+        goal = g->u.pos();
     }
 
     // being led by a leash override other movements decisions
-    if( has_effect( effect_led_by_leash ) && friendly != 0 ) {
+    if( has_effect( effect_led_by_leash ) ) {
         // if we have an hostile target adjacent to the payer, and we're not fleeing, we can potentially attack it
         if( target != nullptr && rl_dist( g->u.pos(), target->pos() ) < 2 &&
             target->attitude_to( g->u ) == Attitude::A_HOSTILE && !fleeing ) {
@@ -801,13 +801,46 @@ void monster::move()
     }
     // Set attitude to attitude to our current target
     monster_attitude current_attitude = attitude( nullptr );
+
+    if( friendly < 0 && is_tamable() ) {
+        add_msg( string_format( name( 1 ) + "-> morale: %d, anger: %d, is fleeing: %s", morale, anger,
+                                ( current_attitude == MATT_FLEE ) ? "Y" : "N" ) );
+        attitude( nullptr );
+    }
+
     if( !wander() ) {
-        if( goal == g->u.pos() ) {
-            current_attitude = attitude( &g->u );
+        if( goal == get_avatar().pos() ) {
+            current_attitude = attitude( &get_avatar() );
         } else {
             for( const npc &guy : g->all_npcs() ) {
                 if( goal == guy.pos() ) {
                     current_attitude = attitude( &guy );
+                }
+            }
+        }
+
+        // if it's an unleashed pet with a friendly attitude toward the player/a npc
+        if( friendly < 0 && is_tamable() && current_attitude == MATT_FRIEND &&
+            !has_effect( effect_led_by_leash ) ) {
+            if( has_flag( MF_PET_WONT_FOLLOW ) ) {
+                // either we didn't have any target, or we saw a friend, nothing to worry about, we can stumble
+                current_attitude = MATT_IGNORE;
+            } else {
+                // if we're close to the player, no need to move, otherwise we follow him
+                // TODO maybe add a way to assign pet to NPCs too? By default it's probably best to have them follow the player
+                if( rl_dist( pos(), get_avatar().pos() ) <= 2 ) {
+                    current_attitude = MATT_IGNORE;
+                }
+            }
+            // if a pet is close to a friendly human, give it a moral boost
+            const int distance_from_friend = rl_dist( pos(), goal );
+            if( distance_from_friend < 12 ) {
+                if( morale < type->morale && one_in( distance_from_friend * 2 ) ) {
+                    morale += 1;
+                }
+                // if the monster is fleeing and is reassured enough, it stops fleeing
+                if( effect_cache[FLEEING] && morale > type->morale * 0.90 ) {
+                    effect_cache[FLEEING] = false;
                 }
             }
         }
@@ -863,9 +896,9 @@ void monster::move()
     if( !moved && has_flag( MF_SMELLS ) ) {
         // No sight... or our plans are invalid (e.g. moving through a transparent, but
         //  solid, square of terrain).  Fall back to smell if we have it.
-        unset_dest();
-        tripoint tmp = scent_move();
+        const tripoint &tmp = scent_move();
         if( tmp.x != -1 ) {
+            //if( !is_player_smell ) {
             destination = tmp;
             moved = true;
         }

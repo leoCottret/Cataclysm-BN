@@ -470,6 +470,9 @@ class monster : public Creature, public visitable<monster>
         units::volume get_carried_volume();
         void move_special_item_to_inv( cata::value_ptr<item> &it );
 
+        // Returns true if the monster can be tamed
+        bool is_tamable();
+
         // DEFINING VALUES
         int friendly;
         int anger = 0;

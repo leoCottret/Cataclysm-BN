@@ -1190,7 +1190,7 @@ monster_attitude monster::attitude( const Character *u ) const
     }
 
     if( effective_anger <= 0 ) {
-        if( get_hp() != get_hp_max() ) {
+        if( get_hp() <= 0.7 * get_hp_max() ) {
             return MATT_FLEE;
         } else {
             return MATT_IGNORE;
@@ -2774,6 +2774,12 @@ void monster::move_special_item_to_inv( cata::value_ptr<item> &it )
     }
 }
 
+bool monster::is_tamable()
+{
+    return has_flag( MF_BIRDFOOD ) || has_flag( MF_CATFOOD ) || has_flag( MF_DOGFOOD ) ||
+           has_flag( MF_CATTLEFODDER );
+}
+
 bool monster::is_dead() const
 {
     return dead || is_dead_state();
@@ -2959,7 +2965,11 @@ void monster::hear_sound( const tripoint &source, const int vol, const int dist 
     // target_z will require some special check due to soil muffling sounds
 
     int wander_turns = volume * ( goodhearing ? 6 : 1 );
-    process_trigger( mon_trigger::SOUND, volume );
+
+    // only trigger this if the monster is not friendly or the source isn't the player
+    if( friendly >= 0 || source != g->u.pos() ) {
+        process_trigger( mon_trigger::SOUND, volume );
+    }
     if( morale >= 0 && anger >= 10 ) {
         // TODO: Add a proper check for fleeing attitude
         // but cache it nicely, because this part is called a lot
