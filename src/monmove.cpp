@@ -568,7 +568,9 @@ void monster::plan()
 
         tripoint dest = target->pos();
         auto att_to_target = attitude_to( *target );
-        if( att_to_target == Attitude::A_HOSTILE && !fleeing ) {
+        // if we're not fleeing against a hostile target, we're fighting back
+        if( ( att_to_target == Attitude::A_HOSTILE ||
+              target->attitude_to( *this ) == Attitude::A_HOSTILE ) && !fleeing ) {
             set_dest( dest );
         } else if( fleeing ) {
             set_dest( tripoint( posx() * 2 - dest.x, posy() * 2 - dest.y, posz() ) );
@@ -579,6 +581,7 @@ void monster::plan()
                 anger += 10 - static_cast<int>( hp_per / 10 );
             }
         }
+
     } else if( friendly > 0 && one_in( 3 ) ) {
         // Grow restless with no targets
         friendly--;
@@ -799,7 +802,9 @@ void monster::move()
     } else if( !harness_part && has_effect( effect_harnessed ) ) {
         remove_effect( effect_harnessed );
     }
-    // Set attitude to attitude to our current target
+    // TODO this really needs to be changed, this is the attitude to nothing in particular
+    // Currently, the target can be set in plan(), but it is not used here
+    // In plan, we only set if the monster should flee or be angry against his current target
     monster_attitude current_attitude = attitude( nullptr );
 
     if( friendly < 0 && is_tamable() ) {
@@ -825,11 +830,13 @@ void monster::move()
             if( has_flag( MF_PET_WONT_FOLLOW ) ) {
                 // either we didn't have any target, or we saw a friend, nothing to worry about, we can stumble
                 current_attitude = MATT_IGNORE;
+                goal = pos();
             } else {
                 // if we're close to the player, no need to move, otherwise we follow him
                 // TODO maybe add a way to assign pet to NPCs too? By default it's probably best to have them follow the player
                 if( rl_dist( pos(), get_avatar().pos() ) <= 2 ) {
                     current_attitude = MATT_IGNORE;
+                    goal = pos();
                 }
             }
             // if a pet is close to a friendly human, give it a moral boost
@@ -846,7 +853,7 @@ void monster::move()
         }
     }
 
-    if( current_attitude == MATT_IGNORE ||
+    if( ( current_attitude == MATT_IGNORE && goal == pos() ) ||
         ( current_attitude == MATT_FOLLOW && rl_dist( pos(), goal ) <= MONSTER_FOLLOW_DIST ) ) {
         moves -= 100;
         stumble();
@@ -995,7 +1002,7 @@ void monster::move()
             const Creature *target = g->critter_at( candidate, is_hallucination() );
             if( target != nullptr ) {
                 const Creature::Attitude att = attitude_to( *target );
-                if( att == A_HOSTILE ) {
+                if( att == A_HOSTILE || target->attitude_to( *this ) == A_HOSTILE ) {
                     // When attacking an adjacent enemy, we're direct.
                     moved = true;
                     next_step = candidate_abs;
@@ -1522,8 +1529,9 @@ bool monster::attack_at( const tripoint &p )
         }
 
         auto attitude = attitude_to( mon );
+        auto target_attitude = mon.attitude_to( *this );
         // MF_ATTACKMON == hulk behavior, whack everything in your way
-        if( attitude == A_HOSTILE || has_flag( MF_ATTACKMON ) ) {
+        if( attitude == A_HOSTILE || target_attitude == A_HOSTILE || has_flag( MF_ATTACKMON ) ) {
             melee_attack( mon );
             return true;
         }
