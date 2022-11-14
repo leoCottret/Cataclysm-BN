@@ -574,6 +574,7 @@ bool Character::can_mount( const monster &critter ) const
 
 void monexamine::mount_pet( monster &z )
 {
+    z.remove_effect( effect_tied );
     g->u.mount_creature( z );
 }
 

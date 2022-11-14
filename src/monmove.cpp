@@ -807,12 +807,6 @@ void monster::move()
     // In plan, we only set if the monster should flee or be angry against his current target
     monster_attitude current_attitude = attitude( nullptr );
 
-    if( friendly < 0 && is_tamable() ) {
-        add_msg( string_format( name( 1 ) + "-> morale: %d, anger: %d, is fleeing: %s", morale, anger,
-                                ( current_attitude == MATT_FLEE ) ? "Y" : "N" ) );
-        attitude( nullptr );
-    }
-
     if( !wander() ) {
         if( goal == get_avatar().pos() ) {
             current_attitude = attitude( &get_avatar() );
